@@ -1,0 +1,13 @@
+[package]
+name = "imt"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["circuits"]
+circuits = []
+
+
+[dependencies]
+serde = { version = "1.0.205", features = ["derive"] }
+tiny-keccak = { version = "2.0.2", features = ["keccak"] }
