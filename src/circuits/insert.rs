@@ -1,3 +1,4 @@
+use anyhow::{ensure, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::Hash;
@@ -24,12 +25,12 @@ impl<K: Key, V: Value> IMTInsert<K, V> {
     /// Apply the IMT insert and return the new updated root.
     ///
     /// Before performong the insertion, the state is checked to make sure it is coherent.
-    pub fn apply<H: Hashor>(&self, hasher: H, old_root: Hash) -> Hash {
+    pub fn apply<H: Hashor>(&self, hasher: H, old_root: Hash) -> Result<Hash> {
         // Make sure the IMTMutate old_root matches the expected old_root.
-        assert_eq!(old_root, self.old_root, "IMTMutate.old_root is stale");
+        ensure!(old_root == self.old_root, "IMTMutate.old_root is stale");
 
         // Verify that the provided ln node is valid.
-        assert!(
+        ensure!(
             self.is_valid_ln(hasher.clone()),
             "IMTMutate.ln_node is invalid"
         );
@@ -46,12 +47,12 @@ impl<K: Key, V: Value> IMTInsert<K, V> {
             imt_root(hasher, new_size, &updated_ln, &self.updated_ln_siblings);
 
         // Make sure both roots are equal.
-        assert_eq!(
-            root_from_node, root_from_updated_ln,
+        ensure!(
+            root_from_node == root_from_updated_ln,
             "IMTMutate.updated_ln_siblings is invalid"
         );
 
-        root_from_node
+        Ok(root_from_node)
     }
 
     /// Returns `true` if `self.ln_node` is a valid ln node for `self.node`.
@@ -71,38 +72,111 @@ impl<K: Key, V: Value> IMTInsert<K, V> {
 mod tests {
     use tiny_keccak::Keccak;
 
-    use super::*;
+    use crate::{
+        circuits::{mutate::IMTMutate, node::IMTNode},
+        imt::Imt,
+    };
 
     #[test]
-    #[should_panic(expected = "IMTMutate.old_root is stale")]
     fn test_apply_invalid_old_root() {
-        let old_root = [0xff; 32];
+        // Instanciate an IMT with a few nodes.
+        let mut imt = Imt::new(Keccak::v256());
+        imt.insert_node([1; 32], [42; 32]);
+        imt.insert_node([2; 32], [42; 32]);
+        imt.insert_node([3; 32], [42; 32]);
 
+        // Create an IMTInsert and call `.apply()` with a different `old_root`.
+        if let IMTMutate::Insert(sut) = imt.insert_node([4; 32], [42; 32]) {
+            let res = sut.apply(Keccak::v256(), [0xff; 32]);
+            assert!(matches!(res, Err(e) if e.to_string() == "IMTMutate.old_root is stale"));
+        }
+
+        // Create an IMTInsert and call `.apply()` with a different `old_root`.
+        let old_root = imt.root;
+        if let IMTMutate::Insert(mut sut) = imt.insert_node([5; 32], [42; 32]) {
+            sut.old_root = [0xff; 32];
+            let res = sut.apply(Keccak::v256(), old_root);
+            assert!(matches!(res, Err(e) if e.to_string() == "IMTMutate.old_root is stale"));
+        }
+    }
+
+    #[test]
+    fn test_apply_invalid_ln() {
+        // Instanciate an IMT with a few nodes.
+        let mut imt = Imt::new(Keccak::v256());
+        imt.insert_node([1; 32], [42; 32]);
+        imt.insert_node([5; 32], [42; 32]);
+        imt.insert_node([10; 32], [42; 32]);
+
+        // Use a `ln_node` with an invalid `key`.
+        let old_root = imt.root;
+        let ln_node = imt.low_nullifier(&[6; 32]);
+        if let IMTMutate::Insert(mut sut) = imt.insert_node([4; 32], [42; 32]) {
+            sut.ln_node = ln_node;
+            let res = sut.apply(Keccak::v256(), old_root);
+            assert!(matches!(res, Err(e) if e.to_string() == "IMTMutate.ln_node is invalid"));
+        }
+
+        // Use a `ln_node` with an invalid `next_key`.
+        let old_root = imt.root;
+        let ln_node = imt.low_nullifier(&[3; 32]);
+        if let IMTMutate::Insert(mut sut) = imt.insert_node([6; 32], [42; 32]) {
+            sut.ln_node = ln_node;
+            let res = sut.apply(Keccak::v256(), old_root);
+            assert!(matches!(res, Err(e) if e.to_string() == "IMTMutate.ln_node is invalid"));
+        }
+
+        // Use a `ln_node` that is not in the tree.
+        let old_root = imt.root;
         let ln_node = IMTNode {
-            index: 0,
-            key: [0; 32],
-            value: [0; 32],
-            next_key: [0; 32],
-        };
-
-        let node = IMTNode {
-            index: 1,
-            key: [1; 32],
+            index: 42,
+            key: [7; 32],
             value: [42; 32],
-            next_key: ln_node.next_key,
+            next_key: [15; 32],
         };
+        if let IMTMutate::Insert(mut sut) = imt.insert_node([8; 32], [42; 32]) {
+            sut.ln_node = ln_node;
+            let res = sut.apply(Keccak::v256(), old_root);
+            assert!(matches!(res, Err(e) if e.to_string() == "IMTMutate.ln_node is invalid"));
+        }
+    }
 
-        let imt_insert = IMTInsert {
-            old_root: [0xb; 32],
-            old_size: 1,
-            ln_node,
-            ln_siblings: vec![None],
+    #[test]
+    fn test_apply_invalid_updated_ln_siblings() {
+        // Instanciate an IMT with a few nodes.
+        let mut imt = Imt::new(Keccak::v256());
+        imt.insert_node([1; 32], [42; 32]);
+        imt.insert_node([2; 32], [42; 32]);
+        imt.insert_node([3; 32], [42; 32]);
 
-            node,
-            node_siblings: vec![None],
-            updated_ln_siblings: vec![None],
-        };
+        // Create an IMTInsert, but update `updated_ln_siblings` to be incorrect, resulting in an
+        // IMT root that differs from the one computed from the inserted node.
+        let old_root = imt.root;
+        if let IMTMutate::Insert(mut sut) = imt.insert_node([4; 32], [42; 32]) {
+            sut.updated_ln_siblings[0] = Some([0xff; 32]);
+            let res = sut.apply(Keccak::v256(), old_root);
+            println!("{res:?}");
+            assert!(
+                matches!(res, Err(e) if e.to_string() == "IMTMutate.updated_ln_siblings is invalid")
+            );
+        }
+    }
 
-        imt_insert.apply(Keccak::v256(), old_root);
+    #[test]
+    fn test_apply() {
+        // Instanciate an IMT with a few nodes.
+        let mut imt = Imt::new(Keccak::v256());
+        let keys = vec![
+            [1; 32], [2; 32], [3; 32], [4; 32], [5; 32], [10; 32], [15; 32], [11; 32], [20; 32],
+            [16; 32], [25; 32],
+        ];
+
+        // Insert all the keys in the IMT and ensure applying the returned `IMTInsert` succeed.
+        keys.into_iter().for_each(|node_key| {
+            if let IMTMutate::Insert(sut) = imt.insert_node(node_key, [42; 32]) {
+                let res = sut.apply(Keccak::v256(), sut.old_root);
+                assert!(res.is_ok())
+            }
+        });
     }
 }

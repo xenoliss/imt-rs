@@ -12,22 +12,22 @@ use crate::{
 #[derive(Debug)]
 pub struct Imt<H: Hashor, K: Key, V: Value> {
     pub root: Hash,
+    pub depth: u8,
+    pub size: u64,
 
     hasher: H,
-    depth: u8,
-    size: u64,
     nodes: HashMap<K, IMTNode<K, V>>,
     hashes: HashMap<u8, HashMap<u64, Hash>>,
 }
 
 impl<H: Hashor, K: Key, V: Value> Imt<H, K, V> {
-    pub fn new(hasher: H, depth: u8) -> Self {
+    pub fn new(hasher: H) -> Self {
         let mut imt = Self {
             root: Default::default(),
 
             hasher,
-            size: Default::default(),
-            depth,
+            size: 1,
+            depth: Default::default(),
             nodes: Default::default(),
             hashes: Default::default(),
         };
@@ -46,20 +46,11 @@ impl<H: Hashor, K: Key, V: Value> Imt<H, K, V> {
     }
 
     pub fn insert_node(&mut self, key: K, value: V) -> IMTMutate<K, V> {
-        // Do not overflow the tree.
-        let max_size = (1 << self.depth) - 1;
-        assert!(self.size < max_size, "tree overflow");
-
         // Ensure key does not already exist in the tree.
         assert!(!self.nodes.contains_key(&key), "key conflict");
 
         let old_root = self.root;
         let old_size = self.size;
-
-        let node_index = {
-            self.size += 1;
-            self.size
-        };
 
         // Get the ln node.
         let ln_node = self.low_nullifier(&key);
@@ -72,9 +63,12 @@ impl<H: Hashor, K: Key, V: Value> Imt<H, K, V> {
             .next_key = key;
         self.refresh_tree(&ln_node.key);
 
+        self.size += 1;
+        self.refresh_depth();
+
         // Create the new node.
         let node = IMTNode {
-            index: node_index,
+            index: old_size,
             key,
             value,
             next_key: ln_node.next_key,
@@ -112,21 +106,52 @@ impl<H: Hashor, K: Key, V: Value> Imt<H, K, V> {
         IMTMutate::update(old_root, size, node, node_siblings, value)
     }
 
+    /// Finds the Low Nulifier node for the given `node_key`.
+    pub fn low_nullifier(&self, node_key: &K) -> IMTNode<K, V> {
+        let ln = self
+            .nodes
+            .values()
+            .find(|node| node.is_ln_of(node_key))
+            .expect("failed to found ln node");
+
+        *ln
+    }
+
+    /// Returns the list of siblings for the given `node_key`.
+    pub fn siblings(&self, node_key: &K) -> Vec<Option<Hash>> {
+        let node = self.nodes.get(node_key).expect("node does not exist");
+
+        let mut siblings = Vec::with_capacity(self.depth.into());
+        let mut index = node.index;
+
+        for level in 0..self.depth {
+            let sibling_index = if index % 2 == 0 { index + 1 } else { index - 1 };
+            let sibling_hash = self
+                .hashes
+                .get(&level)
+                .and_then(|m| m.get(&sibling_index).cloned());
+
+            siblings.push(sibling_hash);
+            index /= 2;
+        }
+
+        siblings
+    }
+
+    /// Refreshes the list of hashes based on the provided `node_key` and registers the new root.
+    /// Also returns the updated list of siblings for the given `node_key`.
     fn refresh_tree(&mut self, node_key: &K) -> Vec<Option<Hash>> {
         let node = self.nodes.get(node_key).expect("failed to get node");
         let mut index = node.index;
 
         // Recompute and cache the node hash.
         let mut hash = node.hash(self.hasher.clone());
-        self.hashes
-            .entry(self.depth)
-            .or_default()
-            .insert(index, hash);
+        self.hashes.entry(0).or_default().insert(index, hash);
 
         // Climb up the tree and refresh the hashes.
-        let mut siblings = Vec::with_capacity(self.depth.into());
-        for level in (1..=self.depth).rev() {
-            let sibling_index = index + (1 - 2 * (index % 2));
+        let mut siblings = Vec::with_capacity(self.depth as _);
+        for level in 0..self.depth {
+            let sibling_index = if index % 2 == 0 { index + 1 } else { index - 1 };
             let sibling_hash = self
                 .hashes
                 .entry(level)
@@ -142,23 +167,23 @@ impl<H: Hashor, K: Key, V: Value> Imt<H, K, V> {
                 (sibling_hash, Some(hash))
             };
 
-            let mut k = Keccak::v256();
+            let mut hasher = self.hasher.clone();
             match (left, right) {
                 (None, None) => unreachable!(),
-                (None, Some(right)) => k.update(&right),
-                (Some(left), None) => k.update(&left),
+                (None, Some(right)) => hasher.update(&right),
+                (Some(left), None) => hasher.update(&left),
                 (Some(left), Some(right)) => {
-                    k.update(&left);
-                    k.update(&right);
+                    hasher.update(&left);
+                    hasher.update(&right);
                 }
             };
 
-            k.finalize(&mut hash);
+            hasher.finalize(&mut hash);
 
             index /= 2;
 
             self.hashes
-                .entry(level - 1)
+                .entry(level + 1)
                 .or_default()
                 .insert(index, hash);
         }
@@ -178,33 +203,13 @@ impl<H: Hashor, K: Key, V: Value> Imt<H, K, V> {
         siblings
     }
 
-    fn low_nullifier(&self, node_key: &K) -> IMTNode<K, V> {
-        let ln = self
-            .nodes
-            .values()
-            .find(|node| node.is_ln_of(node_key))
-            .expect("failed to found ln node");
-
-        *ln
-    }
-
-    fn siblings(&self, node_key: &K) -> Vec<Option<Hash>> {
-        let node = self.nodes.get(node_key).expect("node does not exist");
-
-        let mut siblings = Vec::with_capacity(self.depth.into());
-        let mut index = node.index;
-
-        for level in (1..=self.depth).rev() {
-            let sibling_index = index + (1 - 2 * (index % 2));
-            let sibling_hash = self
-                .hashes
-                .get(&level)
-                .and_then(|m| m.get(&sibling_index).cloned());
-
-            siblings.push(sibling_hash);
-            index /= 2;
+    /// Refreshes the IMT depth to be able to store `self.size` nodes.
+    fn refresh_depth(&mut self) {
+        let depth = (u64::BITS - self.size.leading_zeros() - 1) as u8;
+        self.depth = if self.size == (1_u64 << depth) {
+            depth
+        } else {
+            depth + 1
         }
-
-        siblings
     }
 }

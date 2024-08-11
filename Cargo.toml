@@ -9,5 +9,6 @@ circuits = []
 
 
 [dependencies]
+anyhow = "1.0.86"
 serde = { version = "1.0.205", features = ["derive"] }
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }

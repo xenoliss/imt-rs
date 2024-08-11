@@ -1,3 +1,4 @@
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use crate::Hash;
@@ -58,7 +59,7 @@ impl<K: Key, V: Value> IMTMutate<K, V> {
     ///
     /// Before performong the mutation, the state is checked to make sure it is coherent.
     /// In case of any inconsistency, `None` is returned.
-    pub fn apply<H: Hashor>(&self, hasher: H, old_root: [u8; 32]) -> [u8; 32] {
+    pub fn apply<H: Hashor>(&self, hasher: H, old_root: Hash) -> Result<Hash> {
         match &self {
             IMTMutate::Insert(insert) => insert.apply(hasher, old_root),
             IMTMutate::Update(update) => update.apply(hasher, old_root),

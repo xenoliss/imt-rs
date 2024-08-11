@@ -1,3 +1,4 @@
+use anyhow::{ensure, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::Hash;
@@ -21,12 +22,12 @@ impl<K: Key, V: Value> IMTUpdate<K, V> {
     /// Apply the IMT update and return the new updated root.
     ///
     /// Before performong the update, the state is checked to make sure it is coherent.
-    pub fn apply<H: Hashor>(&self, hasher: H, old_root: Hash) -> Hash {
+    pub fn apply<H: Hashor>(&self, hasher: H, old_root: Hash) -> Result<Hash> {
         // Make sure the IMTMutate old_root matches the expected old_root.
-        assert_eq!(old_root, self.old_root, "IMTMutate.old_root is stale");
+        ensure!(old_root == self.old_root, "IMTMutate.old_root is stale");
 
         // Verify that the node to update is already in the IMT.
-        assert!(
+        ensure!(
             node_exists(
                 hasher.clone(),
                 &self.old_root,
@@ -43,6 +44,11 @@ impl<K: Key, V: Value> IMTUpdate<K, V> {
             ..self.node
         };
 
-        imt_root(hasher, self.size, &updated_node, &self.node_siblings)
+        Ok(imt_root(
+            hasher,
+            self.size,
+            &updated_node,
+            &self.node_siblings,
+        ))
     }
 }
