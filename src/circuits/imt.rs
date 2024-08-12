@@ -12,22 +12,23 @@ use crate::{
 #[derive(Debug)]
 pub struct Imt<H: Hashor, K: Key, V: Value> {
     pub root: Hash,
-    pub depth: u8,
     pub size: u64,
+    pub depth: u8,
 
-    hasher: H,
+    hasher_factory: fn() -> H,
     nodes: HashMap<K, IMTNode<K, V>>,
     hashes: HashMap<u8, HashMap<u64, Hash>>,
 }
 
 impl<H: Hashor, K: Key, V: Value> Imt<H, K, V> {
-    pub fn new(hasher: H) -> Self {
+    /// Insanciate a new IMT with the zero node.
+    pub fn new(hasher_factory: fn() -> H) -> Self {
         let mut imt = Self {
             root: Default::default(),
-
-            hasher,
             size: 1,
             depth: Default::default(),
+
+            hasher_factory,
             nodes: Default::default(),
             hashes: Default::default(),
         };
@@ -148,8 +149,10 @@ impl<H: Hashor, K: Key, V: Value> Imt<H, K, V> {
         let node = self.nodes.get(node_key).expect("failed to get node");
         let mut index = node.index;
 
+        let hasher_factory = self.hasher_factory;
+
         // Recompute and cache the node hash.
-        let mut hash = node.hash(self.hasher.clone());
+        let mut hash = node.hash(hasher_factory());
         self.hashes.entry(0).or_default().insert(index, hash);
 
         // Climb up the tree and refresh the hashes.
@@ -171,7 +174,7 @@ impl<H: Hashor, K: Key, V: Value> Imt<H, K, V> {
                 (sibling_hash, Some(hash))
             };
 
-            let mut hasher = self.hasher.clone();
+            let mut hasher = hasher_factory();
             match (left, right) {
                 (None, None) => unreachable!(),
                 (None, Some(right)) => hasher.update(&right),

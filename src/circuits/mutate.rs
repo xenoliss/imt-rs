@@ -59,10 +59,10 @@ impl<K: Key, V: Value> IMTMutate<K, V> {
     ///
     /// Before performing the mutation, the state is checked to make sure it is coherent.
     /// In case of any inconsistency, `None` is returned.
-    pub fn verify<H: Hashor>(&self, hasher: H, old_root: Hash) -> Result<Hash> {
+    pub fn verify<H: Hashor>(&self, hasher_factory: fn() -> H, old_root: Hash) -> Result<Hash> {
         match &self {
-            IMTMutate::Insert(insert) => insert.verify(hasher, old_root),
-            IMTMutate::Update(update) => update.verify(hasher, old_root),
+            IMTMutate::Insert(insert) => insert.verify(hasher_factory, old_root),
+            IMTMutate::Update(update) => update.verify(hasher_factory, old_root),
         }
     }
 }

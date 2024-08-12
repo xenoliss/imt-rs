@@ -5,7 +5,7 @@ use tiny_keccak::Hasher;
 
 use crate::Hash;
 
-pub trait Hashor = Clone + Hasher;
+pub trait Hashor = Hasher;
 pub trait Key = Default + Clone + Copy + Eq + std::hash::Hash + AsRef<[u8]>;
 pub trait Value = Default + Clone + Copy + AsRef<[u8]>;
 
