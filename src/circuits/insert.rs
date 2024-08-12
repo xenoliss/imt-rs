@@ -22,10 +22,10 @@ pub struct IMTInsert<K: Key, V: Value> {
 }
 
 impl<K: Key, V: Value> IMTInsert<K, V> {
-    /// Apply the IMT insert and return the new updated root.
+    /// Verifies the IMT insert and return the new updated root.
     ///
-    /// Before performong the insertion, the state is checked to make sure it is coherent.
-    pub fn apply<H: Hashor>(&self, hasher: H, old_root: Hash) -> Result<Hash> {
+    /// Before performing the insertion, the state is checked to make sure it is coherent.
+    pub fn verify<H: Hashor>(&self, hasher: H, old_root: Hash) -> Result<Hash> {
         // Make sure the IMTMutate old_root matches the expected old_root.
         ensure!(old_root == self.old_root, "IMTMutate.old_root is stale");
 
@@ -78,30 +78,34 @@ mod tests {
     };
 
     #[test]
-    fn test_apply_invalid_old_root() {
+    fn test_verify_invalid_old_root() {
         // Instanciate an IMT with a few nodes.
         let mut imt = Imt::new(Keccak::v256());
         imt.insert_node([1; 32], [42; 32]);
         imt.insert_node([2; 32], [42; 32]);
         imt.insert_node([3; 32], [42; 32]);
 
-        // Create an IMTInsert and call `.apply()` with a different `old_root`.
+        // Create an IMTInsert and call `.verify()` with a different `old_root`.
         if let IMTMutate::Insert(sut) = imt.insert_node([4; 32], [42; 32]) {
-            let res = sut.apply(Keccak::v256(), [0xff; 32]);
+            let res = sut.verify(Keccak::v256(), [0xff; 32]);
             assert!(matches!(res, Err(e) if e.to_string() == "IMTMutate.old_root is stale"));
+        } else {
+            panic!("invalid result")
         }
 
-        // Create an IMTInsert and call `.apply()` with a different `old_root`.
+        // Create an IMTInsert and call `.verify()` with a different `old_root`.
         let old_root = imt.root;
         if let IMTMutate::Insert(mut sut) = imt.insert_node([5; 32], [42; 32]) {
             sut.old_root = [0xff; 32];
-            let res = sut.apply(Keccak::v256(), old_root);
+            let res = sut.verify(Keccak::v256(), old_root);
             assert!(matches!(res, Err(e) if e.to_string() == "IMTMutate.old_root is stale"));
+        } else {
+            panic!("invalid result")
         }
     }
 
     #[test]
-    fn test_apply_invalid_ln() {
+    fn test_verify_invalid_ln() {
         // Instanciate an IMT with a few nodes.
         let mut imt = Imt::new(Keccak::v256());
         imt.insert_node([1; 32], [42; 32]);
@@ -109,25 +113,26 @@ mod tests {
         imt.insert_node([10; 32], [42; 32]);
 
         // Use a `ln_node` with an invalid `key`.
-        let old_root = imt.root;
         let ln_node = imt.low_nullifier(&[6; 32]);
         if let IMTMutate::Insert(mut sut) = imt.insert_node([4; 32], [42; 32]) {
             sut.ln_node = ln_node;
-            let res = sut.apply(Keccak::v256(), old_root);
+            let res = sut.verify(Keccak::v256(), sut.old_root);
             assert!(matches!(res, Err(e) if e.to_string() == "IMTMutate.ln_node is invalid"));
+        } else {
+            panic!("invalid result")
         }
 
         // Use a `ln_node` with an invalid `next_key`.
-        let old_root = imt.root;
         let ln_node = imt.low_nullifier(&[3; 32]);
         if let IMTMutate::Insert(mut sut) = imt.insert_node([6; 32], [42; 32]) {
             sut.ln_node = ln_node;
-            let res = sut.apply(Keccak::v256(), old_root);
+            let res = sut.verify(Keccak::v256(), sut.old_root);
             assert!(matches!(res, Err(e) if e.to_string() == "IMTMutate.ln_node is invalid"));
+        } else {
+            panic!("invalid result")
         }
 
         // Use a `ln_node` that is not in the tree.
-        let old_root = imt.root;
         let ln_node = IMTNode {
             index: 42,
             key: [7; 32],
@@ -136,13 +141,15 @@ mod tests {
         };
         if let IMTMutate::Insert(mut sut) = imt.insert_node([8; 32], [42; 32]) {
             sut.ln_node = ln_node;
-            let res = sut.apply(Keccak::v256(), old_root);
+            let res = sut.verify(Keccak::v256(), sut.old_root);
             assert!(matches!(res, Err(e) if e.to_string() == "IMTMutate.ln_node is invalid"));
+        } else {
+            panic!("invalid result")
         }
     }
 
     #[test]
-    fn test_apply_invalid_updated_ln_siblings() {
+    fn test_verify_invalid_updated_ln_siblings() {
         // Instanciate an IMT with a few nodes.
         let mut imt = Imt::new(Keccak::v256());
         imt.insert_node([1; 32], [42; 32]);
@@ -151,31 +158,33 @@ mod tests {
 
         // Create an IMTInsert, but update `updated_ln_siblings` to be incorrect, resulting in an
         // IMT root that differs from the one computed from the inserted node.
-        let old_root = imt.root;
         if let IMTMutate::Insert(mut sut) = imt.insert_node([4; 32], [42; 32]) {
             sut.updated_ln_siblings[0] = Some([0xff; 32]);
-            let res = sut.apply(Keccak::v256(), old_root);
+            let res = sut.verify(Keccak::v256(), sut.old_root);
             println!("{res:?}");
             assert!(
                 matches!(res, Err(e) if e.to_string() == "IMTMutate.updated_ln_siblings is invalid")
             );
+        } else {
+            panic!("invalid result")
         }
     }
 
     #[test]
-    fn test_apply() {
-        // Instanciate an IMT with a few nodes.
+    fn test_verify() {
         let mut imt = Imt::new(Keccak::v256());
         let keys = vec![
             [1; 32], [2; 32], [3; 32], [4; 32], [5; 32], [10; 32], [15; 32], [11; 32], [20; 32],
             [16; 32], [25; 32],
         ];
 
-        // Insert all the keys in the IMT and ensure applying the returned `IMTInsert` succeed.
+        // Insert all the keys in the IMT and ensure verifying the returned `IMTInsert` succeed.
         keys.into_iter().for_each(|node_key| {
             if let IMTMutate::Insert(sut) = imt.insert_node(node_key, [42; 32]) {
-                let res = sut.apply(Keccak::v256(), sut.old_root);
+                let res = sut.verify(Keccak::v256(), sut.old_root);
                 assert!(res.is_ok())
+            } else {
+                panic!("invalid result")
             }
         });
     }

@@ -45,6 +45,9 @@ impl<H: Hashor, K: Key, V: Value> Imt<H, K, V> {
         imt
     }
 
+    /// Inserts a new (key; value) in the IMT.
+    ///
+    /// Returns the corresponding `IMTInsert` to use for zkVM verification.
     pub fn insert_node(&mut self, key: K, value: V) -> IMTMutate<K, V> {
         // Ensure key does not already exist in the tree.
         assert!(!self.nodes.contains_key(&key), "key conflict");
@@ -92,18 +95,19 @@ impl<H: Hashor, K: Key, V: Value> Imt<H, K, V> {
         )
     }
 
+    /// Updates the given `key` to `value` in the IMT.
+    ///
+    /// Returns the corresponding `IMTUpdate` to use for zkVM verification.
     pub fn update_node(&mut self, key: K, value: V) -> IMTMutate<K, V> {
-        let node = self.nodes.get_mut(&key).expect("node does not exist");
-
         let old_root = self.root;
-        let size = self.size;
+
+        let node = self.nodes.get_mut(&key).expect("node does not exist");
+        let old_node = *node;
 
         node.value = value;
-        let node = *node;
-
         let node_siblings = self.refresh_tree(&key);
 
-        IMTMutate::update(old_root, size, node, node_siblings, value)
+        IMTMutate::update(old_root, self.size, old_node, node_siblings, value)
     }
 
     /// Finds the Low Nulifier node for the given `node_key`.

@@ -55,14 +55,14 @@ impl<K: Key, V: Value> IMTMutate<K, V> {
         })
     }
 
-    /// Apply the IMT mutation and return the new updated root.
+    /// Verifies the IMT mutation and return the new updated root.
     ///
-    /// Before performong the mutation, the state is checked to make sure it is coherent.
+    /// Before performing the mutation, the state is checked to make sure it is coherent.
     /// In case of any inconsistency, `None` is returned.
-    pub fn apply<H: Hashor>(&self, hasher: H, old_root: Hash) -> Result<Hash> {
+    pub fn verify<H: Hashor>(&self, hasher: H, old_root: Hash) -> Result<Hash> {
         match &self {
-            IMTMutate::Insert(insert) => insert.apply(hasher, old_root),
-            IMTMutate::Update(update) => update.apply(hasher, old_root),
+            IMTMutate::Insert(insert) => insert.verify(hasher, old_root),
+            IMTMutate::Update(update) => update.verify(hasher, old_root),
         }
     }
 }
