@@ -1,11 +1,9 @@
 use std::fmt::Debug;
 
 use serde::{Deserialize, Serialize};
-use tiny_keccak::Hasher;
 
 use crate::Hash;
 
-pub trait Hashor = Hasher;
 pub trait Key = Default + Clone + Copy + Eq + std::hash::Hash + AsRef<[u8]>;
 pub trait Value = Default + Clone + Copy + AsRef<[u8]>;
 
@@ -21,11 +19,11 @@ impl<K: Key, V: Value> IMTNode<K, V> {
     pub fn hash<H: Hashor>(&self, mut hasher: H) -> Hash {
         let mut h = [0u8; 32];
         // NOTE: index is intentionnaly not hashed.
-        hasher.update(self.key.as_ref());
-        hasher.update(self.value.as_ref());
-        hasher.update(self.next_key.as_ref());
+        hasher.update_hashor(self.key.as_ref());
+        hasher.update_hashor(self.value.as_ref());
+        hasher.update_hashor(self.next_key.as_ref());
 
-        hasher.finalize(&mut h);
+        hasher.finalize_hashor_into(&mut h);
         h
     }
 
@@ -36,10 +34,46 @@ impl<K: Key, V: Value> IMTNode<K, V> {
     }
 }
 
-#[cfg(test)]
+/// Hasher trait that is generic on the hash function. Currently only supports 256 bit byte hashes.
+pub trait Hashor {
+    /// Absorb additional input. Can be called multiple times.
+    fn update_hashor(&mut self, input: &[u8]);
+
+    /// Write result into provided hash array.
+    fn finalize_hashor_into(self, out: &mut Hash);
+}
+
+#[cfg(feature = "tiny-keccak")]
+impl Hashor for tiny_keccak::Keccak {
+    fn update_hashor(&mut self, input: &[u8]) {
+        <Self as tiny_keccak::Hasher>::update(self, input)
+    }
+
+    fn finalize_hashor_into(self, out: &mut Hash) {
+        // Note this does not currently guarantee that the out buffer is correct and could fail
+        // for non 256 bit outputs.
+        <Self as tiny_keccak::Hasher>::finalize(self, out)
+    }
+}
+
+#[cfg(feature = "sha2")]
+impl Hashor for sha2::Sha256 {
+    fn update_hashor(&mut self, input: &[u8]) {
+        <Self as sha2::Digest>::update(self, input)
+    }
+
+    fn finalize_hashor_into(self, out: &mut Hash) {
+        <Self as sha2::Digest>::finalize_into(
+            self,
+            generic_array::GenericArray::from_mut_slice(out),
+        )
+    }
+}
+
+#[cfg(all(test, feature = "tiny-keccak"))]
 mod tests {
     use super::*;
-    use tiny_keccak::Keccak;
+    use tiny_keccak::{Hasher, Keccak};
 
     #[test]
     fn test_hash() {

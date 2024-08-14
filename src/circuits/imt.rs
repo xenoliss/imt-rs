@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use tiny_keccak::{Hasher, Keccak};
 
 use crate::{
     circuits::{
@@ -177,15 +176,15 @@ impl<H: Hashor, K: Key, V: Value> Imt<H, K, V> {
             let mut hasher = hasher_factory();
             match (left, right) {
                 (None, None) => unreachable!(),
-                (None, Some(right)) => hasher.update(&right),
-                (Some(left), None) => hasher.update(&left),
+                (None, Some(right)) => hasher.update_hashor(&right),
+                (Some(left), None) => hasher.update_hashor(&left),
                 (Some(left), Some(right)) => {
-                    hasher.update(&left);
-                    hasher.update(&right);
+                    hasher.update_hashor(&left);
+                    hasher.update_hashor(&right);
                 }
             };
 
-            hasher.finalize(&mut hash);
+            hasher.finalize_hashor_into(&mut hash);
 
             index /= 2;
 
@@ -199,10 +198,10 @@ impl<H: Hashor, K: Key, V: Value> Imt<H, K, V> {
         self.root = {
             let mut root_hash = [0; 32];
 
-            let mut k = Keccak::v256();
-            k.update(&hash);
-            k.update(&self.size.to_be_bytes());
-            k.finalize(&mut root_hash);
+            let mut k = hasher_factory();
+            k.update_hashor(&hash);
+            k.update_hashor(&self.size.to_be_bytes());
+            k.finalize_hashor_into(&mut root_hash);
 
             root_hash
         };
