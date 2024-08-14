@@ -72,7 +72,7 @@ impl<K: Key, V: Value> IMTInsert<K, V> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "tiny-keccak"))]
 mod tests {
     use tiny_keccak::Keccak;
 

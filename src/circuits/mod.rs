@@ -31,23 +31,23 @@ fn imt_root<H: Hashor, K: Key, V: Value>(
         let mut hasher = hasher_factory();
         match (left, right) {
             (None, None) => unreachable!(),
-            (None, Some(right)) => hasher.update(right),
-            (Some(left), None) => hasher.update(left),
+            (None, Some(right)) => hasher.update_hashor(right),
+            (Some(left), None) => hasher.update_hashor(left),
             (Some(left), Some(right)) => {
-                hasher.update(left);
-                hasher.update(right);
+                hasher.update_hashor(left);
+                hasher.update_hashor(right);
             }
         };
 
-        hasher.finalize(&mut hash);
+        hasher.finalize_hashor_into(&mut hash);
 
         index /= 2;
     }
 
     let mut hasher = hasher_factory();
-    hasher.update(&hash);
-    hasher.update(&size.to_be_bytes());
-    hasher.finalize(&mut hash);
+    hasher.update_hashor(&hash);
+    hasher.update_hashor(&size.to_be_bytes());
+    hasher.finalize_hashor_into(&mut hash);
 
     hash
 }

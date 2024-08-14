@@ -53,7 +53,7 @@ impl<K: Key, V: Value> IMTUpdate<K, V> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "tiny-keccak"))]
 mod tests {
     use tiny_keccak::Keccak;
 
