@@ -1,16 +1,17 @@
+use std::num::NonZeroU64;
+
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::Hash;
-
-use super::{
-    insert::IMTInsert,
-    node::{Hashor, IMTNode, Key, Value},
-    update::IMTUpdate,
+use crate::{
+    imt::{node::IMTNode, Hashor, Key, Value},
+    Hash,
 };
 
+use super::{insert::IMTInsert, update::IMTUpdate};
+
 #[derive(Debug, Deserialize, Serialize)]
-pub enum IMTMutate<K: Key, V: Value> {
+pub enum IMTMutate<K, V> {
     Insert(IMTInsert<K, V>),
     Update(IMTUpdate<K, V>),
 }
@@ -19,7 +20,7 @@ impl<K: Key, V: Value> IMTMutate<K, V> {
     /// Create a new IMTMutate for insertion.
     pub fn insert(
         old_root: Hash,
-        old_size: u64,
+        old_size: NonZeroU64,
         ln_node: IMTNode<K, V>,
         ln_siblings: Vec<Option<Hash>>,
 
@@ -41,7 +42,7 @@ impl<K: Key, V: Value> IMTMutate<K, V> {
     /// Create a new IMTMutate for udpate.
     pub fn update(
         old_root: Hash,
-        size: u64,
+        size: NonZeroU64,
         node: IMTNode<K, V>,
         node_siblings: Vec<Option<Hash>>,
         new_value: V,

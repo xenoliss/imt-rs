@@ -1,18 +1,19 @@
+use std::num::NonZeroU64;
+
 use anyhow::{ensure, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::Hash;
-
-use super::{
-    imt_root,
-    node::{Hashor, IMTNode, Key, Value},
-    node_exists,
+use crate::{
+    imt::{node::IMTNode, Hashor, Key, Value},
+    Hash,
 };
 
+use super::{imt_root, node_exists};
+
 #[derive(Debug, Deserialize, Serialize)]
-pub struct IMTInsert<K: Key, V: Value> {
+pub struct IMTInsert<K, V> {
     pub old_root: Hash,
-    pub old_size: u64,
+    pub old_size: NonZeroU64,
     pub ln_node: IMTNode<K, V>,
     pub ln_siblings: Vec<Option<Hash>>,
 
@@ -41,7 +42,7 @@ impl<K: Key, V: Value> IMTInsert<K, V> {
             ..self.ln_node
         };
 
-        let new_size: u64 = self.old_size + 1;
+        let new_size = self.old_size.checked_add(1).expect("max size overflow");
         let root_from_node = imt_root(hasher_factory, new_size, &self.node, &self.node_siblings);
         let root_from_updated_ln = imt_root(
             hasher_factory,
@@ -62,6 +63,10 @@ impl<K: Key, V: Value> IMTInsert<K, V> {
     /// Returns `true` if `self.ln_node` is a valid ln node for `self.node`.
     fn is_valid_ln<H: Hashor>(&self, hasher_factory: fn() -> H) -> bool {
         self.ln_node.is_ln_of(&self.node.key)
+            && {
+                println!("OK");
+                true
+            }
             && node_exists(
                 hasher_factory,
                 &self.old_root,
@@ -76,12 +81,17 @@ impl<K: Key, V: Value> IMTInsert<K, V> {
 mod tests {
     use tiny_keccak::Keccak;
 
-    use crate::circuits::{imt::Imt, mutate::IMTMutate, node::IMTNode};
+    use crate::{
+        imt::{node::IMTNode, Imt},
+        utils::btree_imt_storage::BTreeIMTStorage,
+        zkvm::mutate::IMTMutate,
+    };
 
     #[test]
     fn test_verify_invalid_old_root() {
         // Instanciate an IMT with a few nodes.
-        let mut imt = Imt::new(Keccak::v256);
+        let storage = BTreeIMTStorage::default();
+        let mut imt = Imt::new(Keccak::v256, storage);
         imt.insert_node([1; 32], [42; 32]);
         imt.insert_node([2; 32], [42; 32]);
         imt.insert_node([3; 32], [42; 32]);
@@ -108,7 +118,8 @@ mod tests {
     #[test]
     fn test_verify_invalid_ln() {
         // Instanciate an IMT with a few nodes.
-        let mut imt = Imt::new(Keccak::v256);
+        let storage = BTreeIMTStorage::default();
+        let mut imt = Imt::new(Keccak::v256, storage);
         imt.insert_node([1; 32], [42; 32]);
         imt.insert_node([5; 32], [42; 32]);
         imt.insert_node([10; 32], [42; 32]);
@@ -152,7 +163,8 @@ mod tests {
     #[test]
     fn test_verify_invalid_updated_ln_siblings() {
         // Instanciate an IMT with a few nodes.
-        let mut imt = Imt::new(Keccak::v256);
+        let storage = BTreeIMTStorage::default();
+        let mut imt = Imt::new(Keccak::v256, storage);
         imt.insert_node([1; 32], [42; 32]);
         imt.insert_node([2; 32], [42; 32]);
         imt.insert_node([3; 32], [42; 32]);
@@ -173,7 +185,8 @@ mod tests {
 
     #[test]
     fn test_verify() {
-        let mut imt = Imt::new(Keccak::v256);
+        let storage = BTreeIMTStorage::default();
+        let mut imt = Imt::new(Keccak::v256, storage);
         let keys = vec![
             [1; 32], [2; 32], [3; 32], [4; 32], [5; 32], [10; 32], [15; 32], [11; 32], [20; 32],
             [16; 32], [25; 32],

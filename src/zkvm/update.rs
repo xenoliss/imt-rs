@@ -1,18 +1,19 @@
+use std::num::NonZeroU64;
+
 use anyhow::{ensure, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::Hash;
-
-use super::{
-    imt_root,
-    node::{Hashor, IMTNode, Key, Value},
-    node_exists,
+use crate::{
+    imt::{node::IMTNode, Hashor, Key, Value},
+    Hash,
 };
 
+use super::{imt_root, node_exists};
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct IMTUpdate<K: Key, V: Value> {
+pub struct IMTUpdate<K, V> {
     pub old_root: Hash,
-    pub size: u64,
+    pub size: NonZeroU64,
     pub node: IMTNode<K, V>,
     pub node_siblings: Vec<Option<Hash>>,
     pub new_value: V,
@@ -57,12 +58,13 @@ impl<K: Key, V: Value> IMTUpdate<K, V> {
 mod tests {
     use tiny_keccak::Keccak;
 
-    use crate::circuits::{imt::Imt, mutate::IMTMutate};
+    use crate::{imt::Imt, utils::btree_imt_storage::BTreeIMTStorage, zkvm::mutate::IMTMutate};
 
     #[test]
     fn test_verify_invalid_old_root() {
         // Instanciate an IMT with a few nodes.
-        let mut imt = Imt::new(Keccak::v256);
+        let storage = BTreeIMTStorage::default();
+        let mut imt = Imt::new(Keccak::v256, storage);
         imt.insert_node([1; 32], [42; 32]);
         imt.insert_node([2; 32], [42; 32]);
         imt.insert_node([3; 32], [42; 32]);
@@ -77,7 +79,8 @@ mod tests {
     #[test]
     fn test_verify_node_does_not_exist() {
         // Instanciate an IMT with a few nodes.
-        let mut imt = Imt::new(Keccak::v256);
+        let storage = BTreeIMTStorage::default();
+        let mut imt = Imt::new(Keccak::v256, storage);
         imt.insert_node([1; 32], [42; 32]);
         imt.insert_node([2; 32], [42; 32]);
         imt.insert_node([3; 32], [42; 32]);
@@ -95,7 +98,8 @@ mod tests {
     #[test]
     fn test_verify() {
         // Instanciate an IMT with a few nodes.
-        let mut imt = Imt::new(Keccak::v256);
+        let storage = BTreeIMTStorage::default();
+        let mut imt = Imt::new(Keccak::v256, storage);
         imt.insert_node([1; 32], [42; 32]);
         imt.insert_node([2; 32], [42; 32]);
         imt.insert_node([3; 32], [42; 32]);

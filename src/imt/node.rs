@@ -1,16 +1,13 @@
 use std::fmt::Debug;
 
 use serde::{Deserialize, Serialize};
-use tiny_keccak::Hasher;
 
 use crate::Hash;
 
-pub trait Hashor = Hasher;
-pub trait Key = Default + Clone + Copy + Eq + std::hash::Hash + AsRef<[u8]>;
-pub trait Value = Default + Clone + Copy + AsRef<[u8]>;
+use super::{Hashor, Key, Value};
 
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize)]
-pub struct IMTNode<K: Key, V: Value> {
+pub struct IMTNode<K, V> {
     pub index: u64,
     pub key: K,
     pub value: V,
